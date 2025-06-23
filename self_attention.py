@@ -12,7 +12,6 @@ class SelfAttention(nn.Module):
         self.W_value = nn.Linear(embedding_dim, embedding_dim, bias = False)
 
     def forward(self, x):
-        batch_size, seq_len, embedding_dim = x.shape
         Q = self.W_query(x)
         K = self.W_key(x)
         V = self.W_value(x)
