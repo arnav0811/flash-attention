@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
+from attention import scaled_dot_product_attention
 
 class SelfAttention(nn.Module):
     def __init__(self, embedding_dim):
@@ -18,8 +17,4 @@ class SelfAttention(nn.Module):
         K = self.W_key(x)
         V = self.W_value(x)
 
-        attention_scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.key_dim)
-        attention_weights = F.softmax(attention_scores, dim = -1)
-        output = torch.matmul(attention_weights, V)
-
-        return output, attention_weights
+        return scaled_dot_product_attention(Q, K, V)
