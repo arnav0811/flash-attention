@@ -1,0 +1,7 @@
+# requirements.txt
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+triton==2.2.0
+tqdm>=4.66
+rich>=13.7
