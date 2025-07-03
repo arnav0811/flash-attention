@@ -50,8 +50,8 @@ def flash_attention_kernel(
 
     exp_S = tl.exp(S_new)
     l_ij = tl.sum(exp_S, axis = 1)
-
-    accumulator *= (exp_sum_i / (exp_sum_i + l_ij))[:, None]
+    alpha = tl.exp(max_i - max_ij)
+    accumulator *= alpha[:, None]
     accumulator += tl.dot(exp_S, V_block)
 
     # Update for softmax
