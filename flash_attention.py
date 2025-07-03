@@ -5,9 +5,10 @@ import triton.language as tl
 @triton.jit
 def flash_attention_kernel(
   Q, K, V, O, 
-  seq_len, head_dim,
+  seq_len,
   BLOCK_SIZE_M: tl.constexpr, # Query Block Size
   BLOCK_SIZE_N: tl.constexpr, #K/V Block Size
+  HEAD_DIM: tl.comstexpr
 ):
   # Q, K, V, O are pointers
   # Index of program
@@ -20,13 +21,13 @@ def flash_attention_kernel(
   # rows
   offsets_m = start_m + tl.arange(0, BLOCK_SIZE_M)
   # columns
-  offsets_k = tl.arange(0, tl.constexpr(head_dim))
+  offsets_k = tl.arange(0, HEAD_DIM)
 
   # [Block_size_m, head_dim]
-  Q_block = tl.load(Q + offsets_m[:, None] * head_dim + offsets_k[None, :])
+  Q_block = tl.load(Q + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :])
 
   # O = PV
-  accumulator = tl.zeros([BLOCK_SIZE_M, head_dim], dtype = tl.float32)
+  accumulator = tl.zeros([BLOCK_SIZE_M, HEAD_DIM], dtype = tl.float32)
   
   # log sum exp trick
   # maximum current raw attention score for each query
@@ -36,8 +37,8 @@ def flash_attention_kernel(
 
   for start_n in range(0, seq_len, BLOCK_SIZE_N):
     offsets_n = start_n + tl.arange(0, BLOCK_SIZE_N)
-    K_block = tl.load(K + offsets_n[:, None] * head_dim + offsets_k[None, :])
-    V_block = tl.load(V + offsets_n[:, None] * head_dim + offsets_k[None, :])
+    K_block = tl.load(K + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :])
+    V_block = tl.load(V + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :])
 
     # S = QK^T
     S = tl.dot(Q_block, tl.trans(K_block))
@@ -58,7 +59,7 @@ def flash_attention_kernel(
     exp_sum_i += l_ij
 
   # Output Block woith Memory addr calc
-  tl.store(O + offsets_m[:, None] * head_dim + offsets_k[None, :], accumulator)
+  tl.store(O + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], accumulator)
 
 
 def flash_attention(Q, K, V):
@@ -73,7 +74,7 @@ def flash_attention(Q, K, V):
   flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
-    head_dim = dim,
+    HEAD_DIM = head_dim,
     BLOCK_SIZE_M = 64,
     BLOCK_SIZE_N = 64
   )
