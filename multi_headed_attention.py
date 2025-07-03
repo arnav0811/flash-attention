@@ -9,11 +9,10 @@ class MultiHeadedAttention(nn.Module):
 
     self.num_heads = num_heads
     self.head_dim = embedding_dim // num_heads
-    self.W_query = nn.Linear(embedding_dim, embedding_dim)
-    self.W_key = nn.Linear(embedding_dim, embedding_dim)
-    self.W_value = nn.Linear(embedding_dim, embedding_dim)
-
-    self.out_projection = nn.Linear(embedding_dim, embedding_dim)
+    self.W_query = nn.Linear(embedding_dim, embedding_dim, dtype=torch.float16)
+    self.W_key = nn.Linear(embedding_dim, embedding_dim, dtype=torch.float16)
+    self.W_value = nn.Linear(embedding_dim, embedding_dim, dtype=torch.float16)
+    self.out_projection = nn.Linear(embedding_dim, embedding_dim, dtype=torch.float16)
 
   def forward(self, x):
     batch_size, seq_len, _ = x.shape
