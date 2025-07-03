@@ -45,19 +45,24 @@ def flash_attention_kernel(
 
     # Prevent underflow/overflow Softmax
     max_ij = tl.max(S, axis = 1)
+    max_new = tl.maximum(max_i, max_ij)
+
+    alpha = tl.exp(max_i - max_new)
+    accumulator *= alpha[:, None]
+    
     # f(x)'s in softmax eq
-    S_new = S - max_ij[:, None]
+    S_new = S - max_new[:, None]
 
     exp_S = tl.exp(S_new)
     l_ij = tl.sum(exp_S, axis = 1)
-    alpha = tl.exp(max_i - max_ij)
-    accumulator *= alpha[:, None]
+
+    # Update accumulator
     accumulator += tl.dot(exp_S, V_block)
+    exp_sum_i = exp_sum_i * alpha + l_ij
+    max_i = max_new
 
-    # Update for softmax
-    max_i = tl.maximum(max_i, max_ij)
-    exp_sum_i += l_ij
-
+  # Normalization
+  accumulator /= exp_sum_i[:, None]
   # Output Block woith Memory addr calc
   tl.store(O + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], accumulator)
 
@@ -71,7 +76,7 @@ def flash_attention(Q, K, V, BLOCK_SIZE_M: int = 64, BLOCK_SIZE_N: int = 64):
   O = torch.empty_like(Q)
 
   # [(N // 64, )] - grid dim, n // 64 tells number of programs
-  grid = (Q.shape[0],)
+  grid = (triton.cdiv(seq_len, BLOCK_SIZE_M) * batch_size * heads,)
   flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
