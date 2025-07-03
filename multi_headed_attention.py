@@ -17,9 +17,9 @@ class MultiHeadedAttention(nn.Module):
 
   def forward(self, x):
     batch_size, seq_len, _ = x.shape
-    Q = self.W_query.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-    K = self.W_key.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
-    V = self.W_value.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+    Q = self.W_query(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+    K = self.W_key(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+    V = self.W_value(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
     out, attention = scaled_dot_product_attention(Q, K, V)
     out = out.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
