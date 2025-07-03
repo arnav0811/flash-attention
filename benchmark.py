@@ -37,6 +37,6 @@ def benchmark(function, *args, iterations = 100):
   torch.cuda.synchronize()
   return (time.time() - t0) / iterations
 
-print(f"Naive Attention : {benchmark(naive_attention, Q, K, V)*1e-3:.3f} ms")
-print(f"Multi Headed Attention 1 head : {benchmark(mha, Q.view(batch_size, seq_len, dim))*1e-3:.3f} ms")
-print(f"Flash Attention : {benchmark(flash_attention, Q, K, V)*1e-3:.3f} ms")
+print(f"Naive Attention : {benchmark(naive_attention, Q, K, V)*1e3:.3f} ms")
+print(f"Multi Headed Attention 1 head : {benchmark(mha, Q.view(batch_size, seq_len, dim))*1e3:.3f} ms")
+print(f"Flash Attention : {benchmark(flash_attention, Q, K, V)*1e3:.3f} ms")
