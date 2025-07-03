@@ -27,8 +27,8 @@ out_reference = naive_attention(Q, K, V)
 out_mha, _ = mha(Q.view(batch_size, seq_len, dim))
 out_flash = flash_attention(Q, K, V)
 
-print("MHA and reference:  ", torch.allclose(out_mha.view(out_reference.size), out_reference, atol = 1e-3))
-print("Flash and reference:  ", torch.allclose(out_flash.view(out_reference.size), out_reference, atol = 1e-3))
+print("MHA and reference:  ", torch.allclose(out_mha.view_as(out_reference), out_reference, atol = 1e-3))
+print("Flash and reference:  ", torch.allclose(out_flash.view_as(out_reference), out_reference, atol = 1e-3))
 
 def benchmark(function, *args, iterations = 100):
   torch.cuda.synchronize(); t0 = time.time()
