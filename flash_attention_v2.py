@@ -22,7 +22,7 @@ def flash_attention_v2_kernel(
     start_m = program_id_m * BLOCK_SIZE_M
 
     offsets_m = start_m + tl.arange(0, BLOCK_SIZE_M)
-    offsets_k = tl.arange(0, BLOCK_SIZE_N)
+    offsets_k = tl.arange(0, HEAD_DIM)
     # Mask for sequecnes not dividible by BLOCK_SIZE_M - ut of bounds 
     q_mask = offsets_m < seq_len
 
