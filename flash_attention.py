@@ -62,9 +62,9 @@ def flash_attention_kernel(
   tl.store(O + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], accumulator)
 
 
-def flash_attention(Q, K, V):
+def flash_attention(Q, K, V, BLOCK_SIZE_M: int = 64, BLOCK_SIZE_N: int = 64):
   batch_size, heads, seq_len, dim = Q.shape
-  head_dim = dim        
+  head_dim = dim
   Q = Q.view(-1, seq_len, dim).contiguous()
   K = K.view(-1, seq_len, dim).contiguous()
   V = V.view(-1, seq_len, dim).contiguous()
@@ -75,9 +75,9 @@ def flash_attention(Q, K, V):
   flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
-    BLOCK_SIZE_M   = 64,
-    BLOCK_SIZE_N   = 64,
-    HEAD_DIM       = head_dim
+    BLOCK_SIZE_M = BLOCK_SIZE_M,  
+    BLOCK_SIZE_N = BLOCK_SIZE_N,
+    HEAD_DIM = head_dim
   )
 
   return O.view(batch_size, heads, seq_len, dim)
