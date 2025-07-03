@@ -2,6 +2,7 @@ import torch
 import time
 import numpy as np
 import json
+import math
 
 from attention import scaled_dot_product_attention
 from flash_attention import flash_attention
@@ -22,7 +23,6 @@ class FlashAttentionBenchmark:
         ]
         
         self.results = []
-        self.mha_cache = None  # Cache for multi-head attention
     
     def create_tensors(self, batch_size, seq_len, n_heads, head_dim):
         q = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=torch.float16)
@@ -40,9 +40,15 @@ class FlashAttentionBenchmark:
         
         # Convert from (batch, heads, seq, head_dim) to (batch, seq, embedding_dim)
         x = q.transpose(1, 2).contiguous().view(batch_size, seq_len, embedding_dim)
-        if not hasattr(self, 'mha_cache') or self.mha_cache is None:
-            self.mha_cache = MultiHeadedAttention(embedding_dim, n_heads).to(self.device).half()
-        output, _ = self.mha_cache(x)
+        cache_key = (embedding_dim, n_heads)
+        if not hasattr(self, '_mha_caches'):
+            self._mha_caches = {}
+        
+        if cache_key not in self._mha_caches:
+            self._mha_caches[cache_key] = MultiHeadedAttention(embedding_dim, n_heads).to(self.device).half()
+        
+        mha = self._mha_caches[cache_key]
+        output, _ = mha(x)
         # Convert back to (batch, heads, seq, head_dim)
         output = output.view(batch_size, seq_len, n_heads, head_dim).transpose(1, 2)
         return output
@@ -148,7 +154,7 @@ class FlashAttentionBenchmark:
         # Calculate speedups vs scaled dot product
         if "scaled_dot_product" in impl_times and len(impl_times) > 1:
             baseline = np.mean(impl_times["scaled_dot_product"])
-            print(f"\n⚡ Speedup vs Scaled Dot Product:")
+            print(f"\n Speedup vs Scaled Dot Product:")
             for name, times in impl_times.items():
                 if name != "scaled_dot_product":
                     speedup = baseline / np.mean(times)
