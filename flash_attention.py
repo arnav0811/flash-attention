@@ -1,6 +1,7 @@
 import torch
 import triton
 import triton.language as tl
+import math
 
 @triton.jit
 def flash_attention_kernel(
@@ -24,31 +25,33 @@ def flash_attention_kernel(
   offsets_k = tl.arange(0, HEAD_DIM)
 
   # [Block_size_m, head_dim]
-  Q_block = tl.load(Q + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :])
+  Q_block = tl.load(Q + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], mask = offsets_m[:, None] < seq_len, other=0.0)
 
   # O = PV
   accumulator = tl.zeros([BLOCK_SIZE_M, HEAD_DIM], dtype = tl.float32)
   
   # log sum exp trick
   # maximum current raw attention score for each query
-  max_i = tl.full([BLOCK_SIZE_M], float('-inf'), dtype=tl.float32) 
+  max_i = tl.full([BLOCK_SIZE_M], -float('inf'), dtype=tl.float32) 
   # sum of exp 
   exp_sum_i = tl.zeros([BLOCK_SIZE_M], dtype=tl.float32)
 
   for start_n in range(0, seq_len, BLOCK_SIZE_N):
     offsets_n = start_n + tl.arange(0, BLOCK_SIZE_N)
-    K_block = tl.load(K + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :])
-    V_block = tl.load(V + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :])
+    K_block = tl.load(K + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :], mask = offsets_n[:, None] < seq_len, other=0.0)
+    V_block = tl.load(V + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :], mask = offsets_n[:, None] < seq_len, other=0.0)
 
     # S = QK^T
     S = tl.dot(Q_block, tl.trans(K_block))
+    S = S * (1.0 / math.sqrt(HEAD_DIM))
 
     # Prevent underflow/overflow Softmax
     max_ij = tl.max(S, axis = 1)
     max_new = tl.maximum(max_i, max_ij)
 
     alpha = tl.exp(max_i - max_new)
-    accumulator *= alpha[:, None]
+    accumulator = accumulator * alpha[:, None]
+    exp_sum_i = exp_sum_i * alpha
     
     # f(x)'s in softmax eq
     S_new = S - max_new[:, None]
@@ -58,13 +61,13 @@ def flash_attention_kernel(
 
     # Update accumulator
     accumulator += tl.dot(exp_S, V_block)
-    exp_sum_i = exp_sum_i * alpha + l_ij
+    exp_sum_i += l_ij
     max_i = max_new
 
   # Normalization
-  accumulator /= exp_sum_i[:, None]
+  accumulator = accumulator / exp_sum_i[:, None]
   # Output Block woith Memory addr calc
-  tl.store(O + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], accumulator)
+  tl.store(O + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], accumulator, mask = offsets_m[:, None] < seq_len)
 
 
 def flash_attention(Q, K, V, BLOCK_SIZE_M: int = 64, BLOCK_SIZE_N: int = 64):
