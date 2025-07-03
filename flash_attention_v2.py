@@ -81,6 +81,9 @@ def flash_attention_v2(Q, K, V):
         K_reshaped.stride(0), K_reshaped.stride(1), K_reshaped.stride(2),
         V_reshaped.stride(0), V_reshaped.stride(1), V_reshaped.stride(2),
         O.stride(0), O.stride(1), O.stride(2),
-        seq_len, dim, BLOCK_SIZE_M = BLOCK_SIZE_M, BLOCK_SIZE_N = BLOCK_SIZE_N)
+        seq_len,
+        dim,
+        BLOCK_SIZE_M = BLOCK_SIZE_M,
+        BLOCK_SIZE_N = BLOCK_SIZE_N)
 
     return O.view(batch_size, heads, seq_len, dim)
