@@ -69,7 +69,7 @@ def flash_attention(Q, K, V):
   O = torch.empty_like(Q)
 
   # [(N // 64, )] - grid dim, n // 64 tells number of programs
-  grid = (Q_reshaped.shape[0],)
+  grid = (Q.shape[0],)
   flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
