@@ -58,18 +58,19 @@ def flash_attention_kernel(
     exp_sum_i += l_ij
 
   # Output Block woith Memory addr calc
-  tl.store(0 + offsets_m[:, None] * head_dim + offsets_k[None, :], accumulator)
+  tl.store(O + offsets_m[:, None] * head_dim + offsets_k[None, :], accumulator)
 
 
 def flash_attention(Q, K, V):
   batch_size, heads, seq_len, dim = Q.shape
-  Q = Q.view(-1, seq_len, dim).contigupous()
-  K = K.view(-1, seq_len, dim).contigupous()
-  V = V.view(-1, seq_len, dim).contigupous()
+  Q = Q.view(-1, seq_len, dim).contiguous()
+  K = K.view(-1, seq_len, dim).contiguous()
+  V = V.view(-1, seq_len, dim).contiguous()
   O = torch.empty_like(Q)
 
   # [(N // 64, )] - grid dim, n // 64 tells number of programs
-  flash_attention_kernel[(N // 64, )](
+  grid = (Q_reshaped.shape[0],)
+  flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
     head_dim = dim,
