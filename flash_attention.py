@@ -20,7 +20,7 @@ def flash_attention_kernel(
   # rows
   offsets_m = start_m + tl.arange(0, BLOCK_SIZE_M)
   # columns
-  offsets_k = tl.arange(0, head_dim)
+  offsets_k = tl.arange(0, tl.constexpr(head_dim))
 
   # [Block_size_m, head_dim]
   Q_block = tl.load(Q + offsets_m[:, None] * head_dim + offsets_k[None, :])
