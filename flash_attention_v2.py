@@ -12,7 +12,7 @@ def flash_attention_v2_kernel(
     stride_vb, stride_vn, stride_vd,
     stride_ob, stride_on, stride_od,
     seq_len, 
-    head_dim,
+    HEAD_DIM: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
 ):
@@ -29,7 +29,7 @@ def flash_attention_v2_kernel(
     Q_ptr = Q + program_id_batch_head * stride_qb + offsets_m[:, None] * stride_qn + offsets_k[None, :]
     Q_block = tl.load(Q_ptr, mask = q_mask[:, None], other = 0.0)
 
-    accumulator = tl.zeros([BLOCK_SIZE_M, head_dim], dtype = tl.float32)
+    accumulator = tl.zeros([BLOCK_SIZE_M, HEAD_DIM], dtype = tl.float32)
     max_i = tl.full([BLOCK_SIZE_M], -float('inf'), dtype = tl.float32)
     exp_sum_i = tl.zeros([BLOCK_SIZE_M], dtype = tl.float32)
 
@@ -44,7 +44,7 @@ def flash_attention_v2_kernel(
         V_block = tl.load(V_ptr, mask = kv_mask[:, None], other = 0.0)
 
         # S = QK^T
-        S = tl.dot(Q_block, tl.trans(K_block)) * (1.0 / math.sqrt(head_dim))
+        S = tl.dot(Q_block, tl.trans(K_block)) * (1.0 / math.sqrt(HEAD_DIM))
 
         # Online Softmax
         max_ij = tl.max(S, axis = 1)
