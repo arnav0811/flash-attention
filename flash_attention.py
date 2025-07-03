@@ -8,7 +8,7 @@ def flash_attention_kernel(
   seq_len,
   BLOCK_SIZE_M: tl.constexpr, # Query Block Size
   BLOCK_SIZE_N: tl.constexpr, #K/V Block Size
-  HEAD_DIM: tl.comstexpr
+  HEAD_DIM: tl.constexpr
 ):
   # Q, K, V, O are pointers
   # Index of program
