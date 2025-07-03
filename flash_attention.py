@@ -64,6 +64,7 @@ def flash_attention_kernel(
 
 def flash_attention(Q, K, V):
   batch_size, heads, seq_len, dim = Q.shape
+  head_dim = dim        
   Q = Q.view(-1, seq_len, dim).contiguous()
   K = K.view(-1, seq_len, dim).contiguous()
   V = V.view(-1, seq_len, dim).contiguous()
@@ -74,9 +75,9 @@ def flash_attention(Q, K, V):
   flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
-    HEAD_DIM = head_dim,
-    BLOCK_SIZE_M = 64,
-    BLOCK_SIZE_N = 64
+    BLOCK_SIZE_M   = 64,
+    BLOCK_SIZE_N   = 64,
+    HEAD_DIM       = head_dim
   )
 
   return O.view(batch_size, heads, seq_len, dim)
