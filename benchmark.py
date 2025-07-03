@@ -22,6 +22,7 @@ class FlashAttentionBenchmark:
         ]
         
         self.results = []
+        self.mha_cache = None  # Cache for multi-head attention
     
     def create_tensors(self, batch_size, seq_len, n_heads, head_dim):
         q = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=torch.float16)
@@ -39,8 +40,9 @@ class FlashAttentionBenchmark:
         
         # Convert from (batch, heads, seq, head_dim) to (batch, seq, embedding_dim)
         x = q.transpose(1, 2).contiguous().view(batch_size, seq_len, embedding_dim)
-        mha = MultiHeadedAttention(embedding_dim, n_heads).to(self.device)
-        output, _ = mha(x)
+        if not hasattr(self, 'mha_cache') or self.mha_cache is None:
+            self.mha_cache = MultiHeadedAttention(embedding_dim, n_heads).to(self.device).half()
+        output, _ = self.mha_cache(x)
         # Convert back to (batch, heads, seq, head_dim)
         output = output.view(batch_size, seq_len, n_heads, head_dim).transpose(1, 2)
         return output
