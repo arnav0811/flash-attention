@@ -75,8 +75,8 @@ def flash_attention_v2(Q, K, V):
     V_reshaped = V.reshape(-1, seq_len, dim).contiguous()
     O = torch.empty_like(Q_reshaped)
 
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_N = 64
+    BLOCK_SIZE_M = 64
+    BLOCK_SIZE_N = 32
 
     scaling_factor = 1.0 / math.sqrt(dim)
 
