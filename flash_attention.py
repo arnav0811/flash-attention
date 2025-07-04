@@ -43,7 +43,7 @@ def flash_attention_kernel(
 
     # S = QK^T
     S = tl.dot(Q_block, tl.trans(K_block))
-    S = S * (1.0 / math.sqrt(HEAD_DIM))
+    S = S * 1.0 / tl.math.sqrt(HEAD_DIM.to(tl.float32))
 
     # Prevent underflow/overflow Softmax
     max_ij = tl.max(S, axis = 1)
