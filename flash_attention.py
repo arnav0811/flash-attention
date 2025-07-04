@@ -27,7 +27,7 @@ def flash_attention_kernel(
 
   # [Block_size_m, head_dim]
   Q_block = tl.load(Q + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], mask = offsets_m[:, None] < seq_len, other=0.0)
-
+  Q_block = Q_block.to(tl.float32)
   # O = PV
   accumulator = tl.zeros([BLOCK_SIZE_M, HEAD_DIM], dtype = tl.float32)
   
@@ -42,6 +42,9 @@ def flash_attention_kernel(
     K_block = tl.load(K + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :], mask = offsets_n[:, None] < seq_len, other=0.0)
     V_block = tl.load(V + offsets_n[:, None] * HEAD_DIM + offsets_k[None, :], mask = offsets_n[:, None] < seq_len, other=0.0)
 
+    K_block = K_block.to(tl.float32)
+    V_block = V_block.to(tl.float32)
+    
     # S = QK^T
     S = tl.dot(Q_block, tl.trans(K_block))
     S = S * scaling_factor
