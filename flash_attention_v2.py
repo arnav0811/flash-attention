@@ -29,6 +29,7 @@ def flash_attention_v2_kernel(
 
     Q_ptr = Q + program_id_batch_head * stride_qb + offsets_m[:, None] * stride_qn + offsets_k[None, :]
     Q_block = tl.load(Q_ptr, mask = q_mask[:, None], other = 0.0)
+    Q_block = Q_block.to(tl.float32)
 
     accumulator = tl.zeros([BLOCK_SIZE_M, HEAD_DIM], dtype = tl.float32)
     max_i = tl.full([BLOCK_SIZE_M], -float('inf'), dtype = tl.float32)
@@ -43,6 +44,9 @@ def flash_attention_v2_kernel(
 
         V_ptr = V + program_id_batch_head * stride_vb + offsets_n[:, None] * stride_vn + offsets_k[None, :]
         V_block = tl.load(V_ptr, mask = kv_mask[:, None], other = 0.0)
+
+        K_block = K_block.to(tl.float32)
+        V_block = V_block.to(tl.float32)
 
         # S = QK^T
         S = tl.dot(Q_block, tl.trans(K_block)) * scaling_factor
