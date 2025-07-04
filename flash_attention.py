@@ -7,6 +7,7 @@ import math
 def flash_attention_kernel(
   Q, K, V, O, 
   seq_len,
+  scaling_factor,
   BLOCK_SIZE_M: tl.constexpr, # Query Block Size
   BLOCK_SIZE_N: tl.constexpr, #K/V Block Size
   HEAD_DIM: tl.constexpr
@@ -43,7 +44,7 @@ def flash_attention_kernel(
 
     # S = QK^T
     S = tl.dot(Q_block, tl.trans(K_block))
-    S = S * 1.0 / tl.math.sqrt(HEAD_DIM.to(tl.float32))
+    S = S * scaling_factor
 
     # Prevent underflow/overflow Softmax
     max_ij = tl.max(S, axis = 1)
@@ -78,11 +79,14 @@ def flash_attention(Q, K, V, BLOCK_SIZE_M: int = 64, BLOCK_SIZE_N: int = 64):
   V = V.view(-1, seq_len, dim).contiguous()
   O = torch.empty_like(Q)
 
+  scaling_factor = 1.0 / math.sqrt(head_dim)
+
   # [(N // 64, )] - grid dim, n // 64 tells number of programs
   grid = (triton.cdiv(seq_len, BLOCK_SIZE_M) * batch_size * heads,)
   flash_attention_kernel[grid](
     Q, K, V, O,
     seq_len = seq_len,
+    scaling_factor = scaling_factor,
     BLOCK_SIZE_M = BLOCK_SIZE_M,  
     BLOCK_SIZE_N = BLOCK_SIZE_N,
     HEAD_DIM = head_dim
