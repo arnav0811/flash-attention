@@ -44,8 +44,7 @@ def flash_attention_v2_kernel(
         V_block = tl.load(V_ptr, mask = kv_mask[:, None], other = 0.0)
 
         # S = QK^T
-        S = tl.dot(Q_block, tl.trans(K_block)) * (1.0 / math.sqrt(HEAD_DIM))
-
+        S = tl.dot(Q_block, tl.trans(K_block)) * 1.0 / tl.math.sqrt(HEAD_DIM.to(tl.float32))
         # Online Softmax
         max_ij = tl.max(S, axis = 1)
         max_new = tl.maximum(max_i, max_ij)
