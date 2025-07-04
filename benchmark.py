@@ -16,18 +16,19 @@ class FlashAttentionBenchmark:
         
         # Test configurations
         self.configs = [
-            {"batch": 1, "seq_len": 512, "n_heads": 8, "head_dim": 64},
             {"batch": 1, "seq_len": 1024, "n_heads": 8, "head_dim": 64},
             {"batch": 1, "seq_len": 2048, "n_heads": 8, "head_dim": 64},
-            {"batch": 2, "seq_len": 512, "n_heads": 16, "head_dim": 64},
+            {"batch": 1, "seq_len": 4096, "n_heads": 8, "head_dim": 64},
+            {"batch": 1, "seq_len": 8192, "n_heads": 8, "head_dim": 64}, 
         ]
         
         self.results = []
     
     def create_tensors(self, batch_size, seq_len, n_heads, head_dim):
-        q = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=torch.float16)
-        k = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=torch.float16)
-        v = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=torch.float16)
+        dtype = torch.float32 if seq_len > 4096 else torch.float16
+        q = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=dtype)
+        k = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=dtype)
+        v = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=dtype)
         return q, k, v
     
     def scaled_dot_product_wrapper(self, q, k, v):
