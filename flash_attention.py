@@ -74,7 +74,7 @@ def flash_attention_kernel(
   tl.store(O + offsets_m[:, None] * HEAD_DIM + offsets_k[None, :], accumulator, mask = offsets_m[:, None] < seq_len)
 
 
-def flash_attention(Q, K, V, BLOCK_SIZE_M: int = 64, BLOCK_SIZE_N: int = 64):
+def flash_attention(Q, K, V, BLOCK_SIZE_M: int = 128, BLOCK_SIZE_N: int = 128):
   batch_size, heads, seq_len, dim = Q.shape
   head_dim = dim
   Q = Q.view(-1, seq_len, dim).contiguous()
