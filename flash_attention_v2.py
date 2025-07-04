@@ -12,6 +12,7 @@ def flash_attention_v2_kernel(
     stride_vb, stride_vn, stride_vd,
     stride_ob, stride_on, stride_od,
     seq_len, 
+    scaling_factor,
     HEAD_DIM: tl.constexpr,
     BLOCK_SIZE_M: tl.constexpr,
     BLOCK_SIZE_N: tl.constexpr,
@@ -44,7 +45,7 @@ def flash_attention_v2_kernel(
         V_block = tl.load(V_ptr, mask = kv_mask[:, None], other = 0.0)
 
         # S = QK^T
-        S = tl.dot(Q_block, tl.trans(K_block)) * 1.0 / tl.math.sqrt(HEAD_DIM.to(tl.float32))
+        S = tl.dot(Q_block, tl.trans(K_block)) * scaling_factor
         # Online Softmax
         max_ij = tl.max(S, axis = 1)
         max_new = tl.maximum(max_i, max_ij)
@@ -73,6 +74,8 @@ def flash_attention_v2(Q, K, V):
     BLOCK_SIZE_M = 128
     BLOCK_SIZE_N = 64
 
+    scaling_factor = 1.0 / math.sqrt(dim)
+
     grid = (batch_size * heads, triton.cdiv(seq_len, BLOCK_SIZE_M))
     flash_attention_v2_kernel[grid](
         Q_reshaped, K_reshaped, V_reshaped, O,
@@ -81,6 +84,7 @@ def flash_attention_v2(Q, K, V):
         V_reshaped.stride(0), V_reshaped.stride(1), V_reshaped.stride(2),
         O.stride(0), O.stride(1), O.stride(2),
         seq_len,
+        scaling_factor,
         dim,
         BLOCK_SIZE_M = BLOCK_SIZE_M,
         BLOCK_SIZE_N = BLOCK_SIZE_N)
