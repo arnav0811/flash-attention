@@ -5,8 +5,8 @@ import json
 import math
 
 from attention import scaled_dot_product_attention
-from flash_attention import flash_attention
-from flash_attention_v2 import flash_attention_v2
+from flash_attention_v1_fixed import flash_attention
+from flash_attention_v2_fixed import flash_attention_v2
 from multi_headed_attention import MultiHeadedAttention
 
 class FlashAttentionBenchmark:
@@ -14,59 +14,71 @@ class FlashAttentionBenchmark:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Device: {self.device}")
         
-        # Test configurations
+        # Test configurations - optimized for performance differences
         self.configs = [
-            {"batch": 1, "seq_len": 1024, "n_heads": 8, "head_dim": 64},
-            {"batch": 1, "seq_len": 2048, "n_heads": 8, "head_dim": 64},
-            {"batch": 1, "seq_len": 4096, "n_heads": 8, "head_dim": 64},
-            {"batch": 1, "seq_len": 8192, "n_heads": 8, "head_dim": 64}, 
+            {"batch":1,"seq_len":1024,"n_heads":8,"head_dim":64},
+            {"batch":1,"seq_len":4096,"n_heads":8,"head_dim":64},
+            {"batch":1,"seq_len":8192,"n_heads":8,"head_dim":64},
+            {"batch":1,"seq_len":16384,"n_heads":8,"head_dim":64},
         ]
         
         self.results = []
+        self._mha_cache = {}
     
     def create_tensors(self, batch_size, seq_len, n_heads, head_dim):
-        dtype = torch.float32 if seq_len > 4096 else torch.float16
+        dtype = torch.float16
         q = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=dtype)
         k = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=dtype)
         v = torch.randn(batch_size, n_heads, seq_len, head_dim, device=self.device, dtype=dtype)
         return q, k, v
     
-    def scaled_dot_product_wrapper(self, q, k, v):
-        output, _ = scaled_dot_product_attention(q, k, v)
+    def naive_attention_wrapper(self, q, k, v):
+        batch_size, n_heads, seq_len, head_dim = q.shape
+        
+        # Reshape to combine batch and heads
+        q_reshaped = q.view(batch_size * n_heads, seq_len, head_dim)
+        k_reshaped = k.view(batch_size * n_heads, seq_len, head_dim)
+        v_reshaped = v.view(batch_size * n_heads, seq_len, head_dim)
+        
+        output, _ = scaled_dot_product_attention(q_reshaped, k_reshaped, v_reshaped)
+        output = output.view(batch_size, n_heads, seq_len, head_dim)
         return output
     
     def multi_head_wrapper(self, q, k, v):
         batch_size, n_heads, seq_len, head_dim = q.shape
         embedding_dim = n_heads * head_dim
         
-        # Convert from (batch, heads, seq, head_dim) to (batch, seq, embedding_dim)
-        x = q.transpose(1, 2).contiguous().view(batch_size, seq_len, embedding_dim)
+        # Convert to input format expected by MHA
+        x = q.transpose(1, 2).contiguous().view(batch_size, seq_len, embedding_dim).to(torch.float16)
+        
+        # Cache MHA to avoid overhead
         cache_key = (embedding_dim, n_heads)
-        if not hasattr(self, '_mha_caches'):
-            self._mha_caches = {}
+        if cache_key not in self._mha_cache:
+            self._mha_cache[cache_key] = MultiHeadedAttention(embedding_dim, n_heads).to(self.device)
         
-        if cache_key not in self._mha_caches:
-            self._mha_caches[cache_key] = MultiHeadedAttention(embedding_dim, n_heads).to(self.device).half()
-        
-        mha = self._mha_caches[cache_key]
+        mha = self._mha_cache[cache_key]
         output, _ = mha(x)
-        # Convert back to (batch, heads, seq, head_dim)
         output = output.view(batch_size, seq_len, n_heads, head_dim).transpose(1, 2)
         return output
     
-    def benchmark_function(self, func, name, q, k, v):
+    def benchmark_function(self, func, name, q, k, v, warmup_iters=3, bench_iters=10):
         try:
-            for _ in range(3):
+            for _ in range(warmup_iters):
                 with torch.no_grad():
                     _ = func(q, k, v)
                 if torch.cuda.is_available():
                     torch.cuda.synchronize()
         except Exception as e:
+            print(f"  {name:15}: ERROR during warmup - {str(e)}")
             return {"name": name, "error": str(e), "time_ms": float('inf')}
+        
+        # Clear cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
         
         # Benchmarking
         times = []
-        for _ in range(10):
+        for _ in range(bench_iters):
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
             start = time.perf_counter()
@@ -90,28 +102,23 @@ class FlashAttentionBenchmark:
     
     def run_benchmark(self):   
         implementations = {
-            "scaled_dot_product": self.scaled_dot_product_wrapper,
-            "multi_head": self.multi_head_wrapper,
-            "flash_v1": flash_attention,
-            "flash_v2": flash_attention_v2,
+            "naive_attention": self.naive_attention_wrapper,
+            "multi_head"     : self.multi_head_wrapper,
+            "flash_v1"       : lambda q,k,v: flash_attention(q,k,v, BLOCK_SIZE_M=64, BLOCK_SIZE_N=32),
+            "flash_v2"       : lambda q,k,v: flash_attention_v2(q,k,v, BLOCK_SIZE_M=128, BLOCK_SIZE_N=64),
         }
         
-        print(f"\n Testing {len(implementations)} implementations...")
-        
         for i, config in enumerate(self.configs):
-            print(f"\n=== Test {i+1}/{len(self.configs)} ===")
+            print(f"\n Test {i+1}/{len(self.configs)}")
             print(f"Batch: {config['batch']}, Seq: {config['seq_len']}, "
                   f"Heads: {config['n_heads']}, Head Dim: {config['head_dim']}")
-            
-            # Create test data
+      
             q, k, v = self.create_tensors(
                 config["batch"], config["seq_len"], 
                 config["n_heads"], config["head_dim"]
             )
-            
             config_results = []
-            
-            # Test each implementation
+
             for impl_name, impl_func in implementations.items():
                 result = self.benchmark_function(impl_func, impl_name, q, k, v)
                 config_results.append(result)
@@ -121,16 +128,16 @@ class FlashAttentionBenchmark:
                 else:
                     print(f"  {impl_name:15}: {result['time_ms']:.2f}ms (±{result['std_ms']:.2f}ms)")
             
-            # Store results
             self.results.append({
                 "config": config,
                 "results": config_results
             })
+            
+            # Clear cache between configs
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     
     def print_summary(self):
-        print("\n" + "="*5)
-        print("Performance")
-        
         # Calculate averages across all configs
         impl_times = {}
         for test in self.results:
@@ -141,32 +148,32 @@ class FlashAttentionBenchmark:
                         impl_times[name] = []
                     impl_times[name].append(result["time_ms"])
         
-        # Print averages
-        print("\n Average Performance:")
-        for name, times in impl_times.items():
+        sorted_impls = sorted(impl_times.items(), key=lambda x: np.mean(x[1]))
+        for name, times in sorted_impls:
             avg_time = np.mean(times)
-            print(f"  {name:15}: {avg_time:.2f}ms")
+            std_time = np.std(times)
         
-        # Find fastest
-        if impl_times:
-            fastest = min(impl_times.keys(), key=lambda x: np.mean(impl_times[x]))
-            print(f"\n Fastest: {fastest}")
-        
-        # Calculate speedups vs scaled dot product
-        if "scaled_dot_product" in impl_times and len(impl_times) > 1:
-            baseline = np.mean(impl_times["scaled_dot_product"])
-            print(f"\n Speedup vs Scaled Dot Product:")
-            for name, times in impl_times.items():
-                if name != "scaled_dot_product":
+        if len(sorted_impls) >= 4:
+            fastest_name = sorted_impls[0][0]
+            print(f"\nFastest Implementation: {fastest_name}")
+            
+        # Calculate speedups vs naive attention
+        if "naive_attention" in impl_times and len(impl_times) > 1:
+            baseline = np.mean(impl_times["naive_attention"])
+            print(f"\nSpeedup vs Naive Attention:")
+            for name, times in sorted_impls:
+                if name != "naive_attention":
                     speedup = baseline / np.mean(times)
-                    print(f"  {name:15}: {speedup:.2f}x")
+                    print(f"  {name:15}: {speedup:.2f}x faster")
     
     def save_results(self, filename="benchmark_results.json"):
         with open(filename, 'w') as f:
             json.dump(self.results, f, indent=2)
-        print(f"\n Results saved to {filename}")
+        print(f"\nResults saved to {filename}")
 
 def main():
+    print("Flash Attention Benchmark")
+    
     benchmark = FlashAttentionBenchmark()
     benchmark.run_benchmark()
     benchmark.print_summary()
